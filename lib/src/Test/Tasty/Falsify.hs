@@ -6,11 +6,14 @@
 module Test.Tasty.Falsify (
     -- * Test property
     testProperty
+    -- * Test IO property
+  , testPropertyIO
     -- * Configure test behaviour
   , TestOptions(..)
   , Verbose(..)
   , ExpectFailure(..)
   , testPropertyWith
+  , testPropertyIOWith
     -- * Re-exports
   , module Test.Falsify.Property
     -- ** Generators

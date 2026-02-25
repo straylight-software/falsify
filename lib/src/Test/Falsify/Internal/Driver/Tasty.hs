@@ -6,11 +6,14 @@
 module Test.Falsify.Internal.Driver.Tasty (
     -- * Test property
     testProperty
+    -- * Test IO property
+  , testPropertyIO
     -- * Configure test behaviour
   , TestOptions(..)
   , Verbose(..)
   , ExpectFailure(..)
   , testPropertyWith
+  , testPropertyIOWith
   ) where
 
 import Prelude hiding (log)
@@ -37,6 +40,9 @@ import qualified Test.Tasty.Providers as Tasty
 -------------------------------------------------------------------------------}
 
 data Test = Test TestOptions (Property' String ())
+
+-- | A test that generates an IO action
+data TestIO = TestIO TestOptions (Property' String (IO ()))
 
 data TestOptions = TestOptions {
       -- | Do we expect this test to fail?
@@ -94,6 +100,36 @@ instance IsTest Test where
       , Tasty.Option $ Proxy @MaxRatio
       ]
 
+instance IsTest TestIO where
+  -- @tasty@ docs (1.4.3) explicitly say to ignore the @reportProgress@ argument
+  run opts (TestIO testOpts prop) _reportProgress =
+      toTastyResult . renderTestResult verbose (expectFailure testOpts) <$>
+        falsifyIO driverOpts prop
+    where
+      verbose :: Verbose
+      verbose = fromMaybe (Tasty.lookupOption opts) (overrideVerbose testOpts)
+
+      driverOpts :: Options
+      driverOpts =
+            maybe id
+              (\x o -> o{maxShrinks = Just x})
+              (overrideMaxShrinks testOpts)
+          $ maybe id
+              (\x o -> o{tests = x})
+              (overrideNumTests testOpts)
+          $ maybe id
+              (\x o -> o{maxRatio = x})
+              (overrideMaxRatio testOpts)
+          $ driverOptions opts
+
+  testOptions = Tagged [
+        Tasty.Option $ Proxy @Verbose
+      , Tasty.Option $ Proxy @Tests
+      , Tasty.Option $ Proxy @MaxShrinks
+      , Tasty.Option $ Proxy @Replay
+      , Tasty.Option $ Proxy @MaxRatio
+      ]
+
 toTastyResult :: RenderedTestResult -> Tasty.Result
 toTastyResult RenderedTestResult{testPassed, testOutput}
   | testPassed = Tasty.testPassed testOutput
@@ -109,6 +145,17 @@ testProperty = testPropertyWith def
 
 testPropertyWith :: TestOptions -> TestName -> Property' String () -> TestTree
 testPropertyWith testOpts name = Tasty.singleTest name . Test testOpts
+
+-- | Test an IO property with default options
+--
+-- The property generates an IO action. The test passes if the IO action
+-- completes without throwing an exception.
+testPropertyIO :: TestName -> Property' String (IO ()) -> TestTree
+testPropertyIO = testPropertyIOWith def
+
+-- | Test an IO property with custom options
+testPropertyIOWith :: TestOptions -> TestName -> Property' String (IO ()) -> TestTree
+testPropertyIOWith testOpts name = Tasty.singleTest name . TestIO testOpts
 
 {-------------------------------------------------------------------------------
   Options specific to the tasty test runner

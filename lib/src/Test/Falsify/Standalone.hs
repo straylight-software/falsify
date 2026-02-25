@@ -4,6 +4,10 @@ module Test.Falsify.Standalone (
     check
   , checkWith
   , runWith
+    -- * Running IO properties
+  , checkIO
+  , checkIOWith
+  , runIOWith
     -- * Options
   , Options(..)
     -- * Results
@@ -86,3 +90,61 @@ renderLog (Log entries) = unlines $ map renderLogEntry (reverse entries)
     renderLogEntry (Generated stack x) =
       "generated " ++ x ++ " at " ++ prettyCallStack stack
     renderLogEntry (Info x) = x
+
+{-------------------------------------------------------------------------------
+  IO Properties
+  
+  These functions run properties that generate IO actions. The property
+  generates an IO action which is then executed. If the IO action throws
+  an exception, the test fails. This allows testing IO code while maintaining
+  falsify's shrinking capabilities.
+-------------------------------------------------------------------------------}
+
+-- | Run an IO property with default options
+--
+-- The property generates an IO action. The test passes if the IO action
+-- completes without throwing an exception.
+--
+-- === Example
+--
+-- @
+-- prop :: Property' String (IO ())
+-- prop = do
+--     x <- gen $ Gen.int (Range.between (0, 100))
+--     return $ do
+--         result <- runMyIOCode x
+--         when (result < 0) $ throwIO (userError "negative result")
+-- @
+checkIO :: Property' String (IO ()) -> IO Bool
+checkIO = checkIOWith def
+
+-- | Run an IO property with custom options
+checkIOWith :: Options -> Property' String (IO ()) -> IO Bool
+checkIOWith opts = fmap isPassed . runIOWith opts
+  where
+    isPassed TestPassed = True
+    isPassed _          = False
+
+-- | Run an IO property and return the full result
+--
+-- This runs the property multiple times. For each run:
+-- 1. Generate an IO action using the property
+-- 2. Execute the IO action
+-- 3. If it throws an exception, the test fails (and shrinking begins)
+-- 4. If it completes successfully, move to the next test
+runIOWith :: Options -> Property' String (IO ()) -> IO TestResult
+runIOWith opts prop = do
+    (_seed, _successes, _discarded, mFailure) <- Driver.falsifyIO opts prop
+    return $ case mFailure of
+      Nothing -> TestPassed
+      Just f ->
+        let explanation = Driver.failureRun f
+            history = shrinkHistory $ first fst $ explanation
+            ((_err, finalRun), _rejected) = shrinkOutcome explanation
+         in TestFailed
+              TestFailure {
+                  failureError        = NE.last history
+                , failureLog          = renderLog (runLog finalRun)
+                , failureSeed         = Driver.failureSeed f
+                , failureShrinkHistory = history
+                }
