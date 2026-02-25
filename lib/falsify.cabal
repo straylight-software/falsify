@@ -91,10 +91,13 @@ library
       Test.Falsify.Predicate
       Test.Falsify.Property
       Test.Falsify.Range
+      Test.Falsify.Standalone
 
       -- For consistency with the other tasty runners, we places these modules
       -- in the @Test.Tasty.*@ hiearchy instead of @Test.Falsify.*@.
       Test.Tasty.Falsify
+
+      Test.Hspec.Falsify
   other-modules:
       Test.Falsify.Internal.Driver
       Test.Falsify.Internal.Driver.ReplaySeed
@@ -124,6 +127,7 @@ library
     , bytestring           >= 0.10 && < 0.13
     , containers           >= 0.6  && < 0.8
     , data-default         >= 0.7  && < 0.9
+    , hspec                >= 2.8  && < 3
     , mtl                  >= 2.2  && < 2.4
     , optics-core          >= 0.3  && < 0.5
     , optparse-applicative >= 0.16 && < 0.19
